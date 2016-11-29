@@ -8,62 +8,63 @@
 #include <boost/fiber/all.hpp>
 #include <range/v3/view/iota.hpp>
 
+#include "vector_clock.hpp"
+
 template <int NumThread>
 class thread_context {
 public:
-    thread_context(size_t index)
-        : index_(index)
-        , local_acq_rel_clock_(acq_rel_clock_[index])
-    {
-    }
+    size_t index_ = 0;
+    vector_clock<NumThread> current_;
+    vector_clock<NumThread> release_;
+    bool result_ = false;
+    boost::fibers::fiber fiber_;
+};
 
-    size_t index_;
-    uint32_t& local_acq_rel_clock_;
-    // TODO: These are essentially vector clocks, should be able to extract to standalone class
-    uint32_t acq_rel_clock_[NumThread] = {
-        0,
-    };
-    uint32_t acquire_clock_[NumThread] = {
-        0,
-    };
-    uint32_t release_clock_[NumThread] = {
-        0,
-    };
+template <size_t NumThread>
+class execution_context {
+public:
+    thread_context<NumThread> threads_[NumThread];
 
-    void fence_acquire()
+    execution_context()
     {
-        for (auto i : ranges::view::ints(0, NumThread)) {
-            if (acquire_clock_[i] > acq_rel_clock_[i]) {
-                acq_rel_clock_[i] = acquire_clock_[i];
-            }
+        for (size_t i = 0; i < NumThread; i++) {
+            threads_[i].index_ = i;
         }
     }
 
-    void fence_release()
+    void fence_acquire(size_t idx)
     {
-        for (auto i : ranges::view::ints(0, NumThread)) {
-            release_clock_[i] = acq_rel_clock_[i];
+        auto& th = threads_[idx];
+        for (const auto& others : threads_) {
+            th.current_.merge(others.release_);
         }
+        th.current_.increment(idx);
     }
 
-    void fence_acq_rel()
+    void fence_release(size_t idx)
     {
-        fence_acquire();
-        fence_release();
+        auto& th = threads_[idx];
+        th.release_ = th.current_;
+        th.current_.increment(idx);
     }
 
-    void fence_seq_cst(uint32_t seq_cst_order[NumThread])
+    void fence_acq_rel(size_t idx)
     {
-        fence_acquire();
-        for (auto i : ranges::view::ints(0, NumThread)) {
-            if (seq_cst_order[i] > acq_rel_clock_[i]) {
-                acq_rel_clock_[i] = seq_cst_order[i];
-            }
+        fence_acquire(idx);
+        fence_release(idx);
+    }
+
+    void fence_seq_cst()
+    {
+        boost::this_fiber::yield();
+        vector_clock<NumThread> new_clock;
+        for (const auto& th : threads_) {
+            new_clock.merge(th.current_);
         }
-        for (auto i : ranges::view::ints(0, NumThread)) {
-            seq_cst_order[i] = acq_rel_clock_[i];
+        for (auto& th : threads_) {
+            th.current_ = new_clock;
+            th.current_.increment(th.index_);
         }
-        fence_release();
     }
 };
 
@@ -107,6 +108,7 @@ public:
     {
         id_ = other.id_;
         ctx_ = std::move(other.ctx_);
+        return *this;
     }
 
     bool joinable() const

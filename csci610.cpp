@@ -1,6 +1,2 @@
-int main(int argc, char* argv[])
-{
-    // currently blank, will be filled when we have instrumentation
-    
-    return 0;
+int main(int argc, const char **argv) {
 }

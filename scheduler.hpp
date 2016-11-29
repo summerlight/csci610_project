@@ -19,6 +19,52 @@ public:
 
     void awakened(boost::fibers::context* ctx) noexcept override
     {
+		//fmt::print("scheduler::awakened(context), thread_id = {};\n", std::this_thread::get_id());
+        ctx_.emplace_back(ctx);
+        ranges::shuffle(ctx_);
+    }
+
+    boost::fibers::context* pick_next() noexcept override
+    {
+		//fmt::print("scheduler::pick_next(), thread_id = {};\n", std::this_thread::get_id());
+        if (ctx_.empty()) {
+            return nullptr;
+        }
+        auto* ret = ctx_.back();
+        ctx_.pop_back();
+        return ret;
+    }
+
+    bool has_ready_fibers() const noexcept override
+    {
+		//fmt::print("scheduler::has_ready_fibers(), thread_id = {};\n", std::this_thread::get_id());
+        return !ctx_.empty();
+    }
+
+    void suspend_until(std::chrono::steady_clock::time_point const& tp) noexcept override
+    {
+        // Currently we don't want to implement timing related things
+        //assert(false);
+    }
+
+    void notify() noexcept override
+    {
+        // Currently we don't want to implement timing related things
+        //assert(false);
+    }
+};
+
+class fixed_scheduler : public boost::fibers::algo::algorithm {
+public:
+    fixed_scheduler() = default;
+
+    fixed_scheduler(scheduler const&) = delete;
+    fixed_scheduler& operator=(fixed_scheduler const&) = delete;
+
+    std::vector<boost::fibers::context*> ctx_;
+
+    void awakened(boost::fibers::context* ctx) noexcept override
+    {
 		fmt::print("scheduler::awakened(context), thread_id = {};\n", std::this_thread::get_id());
         ctx_.emplace_back(ctx);
         ranges::shuffle(ctx_);

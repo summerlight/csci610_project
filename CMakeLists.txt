@@ -8,10 +8,11 @@ set(CMAKE_BUILD_TYPE Debug)
 # csci610
 #######################
 
+add_executable(csci610 
+    csci610.cpp)
+
 add_subdirectory(fmt)
 #add_subdirectory(range-v3)
-
-add_executable(csci610 csci610.cpp)
 
 target_include_directories(csci610 PUBLIC
     range-v3/include fmt ${Boost_INCLUDE_DIRS})
