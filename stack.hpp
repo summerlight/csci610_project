@@ -6,10 +6,10 @@
 class stack {
     struct node {
         int value;
-        var<node*, 4> next{ nullptr };
+        var_ptr<node> next{ nullptr };
     };
 
-    atomic<node*, 4> head_{ nullptr };
+    var_ptr<node> head_{ nullptr };
 
 public:
     void push(int value);

@@ -5,51 +5,95 @@
 #include <cassert>
 #include <exception>
 #include <range/v3/view/iota.hpp>
+#include "constant.hpp"
 #include "environment.hpp"
-#include "thread.hpp"
 #include "vector_clock.hpp"
 
-template <typename T, size_t NumThread>
-class atomic {
+template <typename T>
+class var {
 public:
     T value_;
+    vector_clock<MaxThreadCnt> clock_;
 
-    atomic(T value)
+    var(T value)
         : value_(value)
     {
     }
 
-    ~atomic()
+    ~var()
     {
     }
 
-    T load()
+    void check()
     {
-        environment<NumThread>::get().fence_seq_cst();
-        //fmt::print("[{}] {} : load() -> {}\n", environment<NumThread>::get().this_thread().index_, (intptr_t)this, value_);
-        return value_;
+        auto& th = environment::get().this_thread();
+        if (!clock_.happens_before(th.current_)) {
+            if (EnableLogging) {
+                fmt::print("[{}] data race({})({}, {})\n", th.index_, (intptr_t)this, th.current_, clock_);
+            }
+            throw_exception("data race");
+        }
+    }
+
+    void log(const char* func)
+    {
+        if (EnableLogging) {
+            fmt::print("[{}] var({})::{}({})\n", environment::get().get_thread_id(), (intptr_t)this, func, clock_);
+        }
     }
 
     void store(const T& v)
     {
-        environment<NumThread>::get().fence_seq_cst();
-        //fmt::print("[{}] {} : store({})\n", environment<NumThread>::get().this_thread().index_, (intptr_t)this, v);
+        environment::get().yield();
+        check();
+        auto& th = environment::get().this_thread();
+        th.current_.increment(th.index_);
+        clock_ = th.current_;
+        log("store");
         value_ = v;
     }
 
-    template <typename Op>
-    T rmw(Op op)
+    T load()
     {
-        environment<NumThread>::get().fence_seq_cst();
+        environment::get().yield();
+        check();
+        auto& th = environment::get().this_thread();
+        log("load");
+        return value_;
+    }
+
+    void atomic_store(const T& v)
+    {
+        clock_ = environment::get().fence_seq_cst();
+        check();
+        log("atomic_store");
+        value_ = v;
+    }
+
+    T atomic_load()
+    {
+        clock_ = environment::get().fence_seq_cst();
+        check();
+        log("atomic_load");
+        return value_;
+    }
+
+    template <typename Op>
+    T atomic_rmw(Op op)
+    {
+        clock_ = environment::get().fence_seq_cst();
+        check();
+        log("atomic_rmw");
         auto old = value_;
         value_ = op(old);
-        //fmt::print("[{}] {} : rmw({} -> {})\n", environment<NumThread>::get().this_thread().index_, (intptr_t)this, old, value_);
         return old;
     }
 
-    bool cas(T expected, T desired)
+    bool atomic_cas(T expected, T desired)
     {
-        environment<NumThread>::get().fence_seq_cst();
+        clock_ = environment::get().fence_seq_cst();
+        check();
+        log("atomic_cas");
         if (value_ == expected) {
             value_ = desired;
             return true;
@@ -65,51 +109,48 @@ public:
     }
 };
 
-template <typename T, size_t NumThread>
-class var {
+template <typename T>
+class var_ptr : public var<T*> {
 public:
-    T value_;
-    vector_clock<NumThread> clock_;
-    var(T value)
-        : value_(value)
+    using super = var<T*>;
+    var_ptr(T* value)
+        : super(value)
     {
     }
 
-    var(thread_context<NumThread>& th, T value)
+    T* load()
     {
-        store(th, value);
+        check_freed_memory();
+        return super::load();
     }
 
-    ~var()
+    T* atomic_load()
     {
+        check_freed_memory();
+        return super::atomic_load();
     }
 
-    void store(const T& v)
+    template <typename Op>
+    T* atomic_rmw(Op op)
     {
-        auto& th = environment<NumThread>::get().this_thread();
-        fmt::print("store from thread {} / {} / {}\n", th.index_, clock_, th.current_);
-        if (!clock_.happens_before(th.current_)) {
-            throw std::runtime_error("data race");
+        check_freed_memory();
+        return super::atomic_rmw(op);
+    }
+
+    bool atomic_cas(T* expected, T* desired)
+    {
+        check_freed_memory();
+        return super::atomic_cas(expected, desired);
+    }
+
+    void check_freed_memory() {
+        auto* ptr = super::raw_load();
+        if (ptr && !is_alive(ptr)) {
+            if (EnableLogging) {
+                fmt::print("[{}] access to freed memory({}) {}\n", environment::get().get_thread_id(), (intptr_t)this, (intptr_t)super::raw_load());
+            }
+            throw_exception("access to freed memory");
         }
-        clock_ = th.current_;
-        th.current_.increment(th.index_);
-        value_ = v;
-    }
-
-    T load()
-    {
-        auto& th = environment<NumThread>::get().this_thread();
-        fmt::print("load from thread {} / {} / {}\n", th.index_, clock_, th.current_);
-        if (!clock_.happens_before(th.current_)) {
-            throw std::runtime_error("data race");
-        }
-        th.current_.increment(th.index_);
-        return value_;
-    }
-
-    T raw_load()
-    {
-        return value_;
     }
 };
 
