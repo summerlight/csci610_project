@@ -7,7 +7,6 @@
 
 #include "allocator.hpp"
 #include "environment.hpp"
-#include "thread.hpp"
 #include "scheduler.hpp"
 #include "stack.hpp"
 #include "linked_list.hpp"
