@@ -128,13 +128,14 @@ void run_random(const option& opt)
         fmt::print("\tpath_cov\taccum_cov\terror\n");
         fmt::print("-----------------------------------------\n");
     }
+    std::mt19937_64 rnd{ opt.seed };
     std::bitset<MaxPathBucket> coverage;
     for (int i = 0; i < 100; i++) {
-        run(i, opt, std::make_unique<random_scheduler>(opt.seed + i), coverage);
+        run(i, opt, std::make_unique<random_scheduler>(rnd()), coverage);
     }
 }
 
-std::vector<int> mutate_history(const std::vector<history>& input, std::mt19937& rnd) {
+std::vector<int> mutate_history(const std::vector<history>& input, std::mt19937_64& rnd) {
     std::vector<int> mutated;
     for (auto& i : input) {
         mutated.push_back(i.thread_);
@@ -149,19 +150,19 @@ void run_with_generated_history(const option& opt) {
         fmt::print("\tpath_cov\taccum_cov\terror\n");
         fmt::print("----------------------------------\n");
     }
-    std::mt19937 rnd{ opt.seed };
+    std::mt19937_64 rnd{ opt.seed };
     std::vector<std::vector<history>> current;
     std::bitset<MaxPathBucket> coverage;
     int idx = 0; 
     for (int i = 0; i < 10; i++) {
-        run(idx++, opt, std::make_unique<prefix_scheduler>(opt.seed + i), coverage);
+        run(idx++, opt, std::make_unique<prefix_scheduler>(rnd()), coverage);
         auto& env = environment::get();
         current.emplace_back(env.history_);
     }
 
     for (int iter = 0; iter < 9; iter++) {
         for (int i = 0; i < 10; i++) {
-            run(idx++, opt, std::make_unique<prefix_scheduler>(opt.seed + i, mutate_history(current[i], rnd)), coverage);
+            run(idx++, opt, std::make_unique<prefix_scheduler>(rnd(), mutate_history(current[i], rnd)), coverage);
             auto& env = environment::get();
             current.emplace_back(env.history_);
         }

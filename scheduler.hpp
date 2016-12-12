@@ -13,7 +13,7 @@ public:
 
 class random_scheduler : public scheduler {
     std::vector<int> active_;
-    std::mt19937 rnd_{ 0 };
+    std::mt19937_64 rnd_{ 0 };
 
 public:
     random_scheduler() = default;
@@ -26,7 +26,7 @@ public:
 class prefix_scheduler : public scheduler {
     std::vector<int> history_;
     size_t pos_{ 0 };
-    std::mt19937 rnd_{ 0 };
+    std::mt19937_64 rnd_{ 0 };
 
     void generate_history();
 
