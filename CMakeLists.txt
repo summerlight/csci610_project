@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project (CSCI610)
 
-find_package( Boost 1.62 COMPONENTS context REQUIRED )
+find_package( Boost 1.62 COMPONENTS context program_options REQUIRED )
 
 set(CMAKE_BUILD_TYPE Debug)
 
@@ -19,7 +19,8 @@ add_library(csci610_base
     environment.cpp
     instrument.cpp
     scheduler.cpp
-    stack.o)
+    stack.o
+    linked_list.o)
 
 target_include_directories(csci610_base PUBLIC
     range-v3/include fmt ${Boost_INCLUDE_DIRS})
@@ -28,9 +29,17 @@ target_link_libraries(csci610_base LINK_PUBLIC fmt ${Boost_LIBRARIES})
 
 add_custom_command(
     OUTPUT stack.o
-    COMMAND ${CMAKE_SOURCE_DIR}/emit_llvm.sh
+    COMMAND ${CMAKE_SOURCE_DIR}/emit_llvm.sh stack
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEPENDS stack.cpp stack.hpp var.hpp allocator.hpp
+    MAIN_DEPENDENCY 
+    )
+
+add_custom_command(
+    OUTPUT linked_list.o
+    COMMAND ${CMAKE_SOURCE_DIR}/emit_llvm.sh linked_list
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEPENDS linked_list.cpp linked_list.hpp var.hpp allocator.hpp
     MAIN_DEPENDENCY 
     )
 
@@ -39,7 +48,9 @@ add_custom_command(
 #######################
 
 add_executable(csci610
-    csci610.cpp)
+    csci610.cpp
+    test_stack.cpp
+    test_list.cpp)
 
 add_dependencies(csci610 csci610_base)
 

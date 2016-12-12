@@ -10,27 +10,30 @@
 #include "thread.hpp"
 #include "scheduler.hpp"
 #include "stack.hpp"
+#include "linked_list.hpp"
 #include "var.hpp"
 
 TEST_CASE("execution test 0", "[execution]")
 {
+    int cnt = 0;
     auto& env = environment::reset();
     env.register_thread(0, [&] {
-        fmt::print("th 0\n");
+        cnt++;
         env.yield();
-        fmt::print("th 0\n");
+        cnt++;
     });
     env.register_thread(1, [&] {
-        fmt::print("th 1\n");
+        cnt++;
         env.yield();
-        fmt::print("th 1\n");
+        cnt++;
     });
     env.register_thread(2, [&] {
-        fmt::print("th 2\n");
+        cnt++;
         env.yield();
-        fmt::print("th 2\n");
+        cnt++;
     });
     REQUIRE(!env.run());
+    REQUIRE(cnt == 6);
 }
 
 TEST_CASE("execution test 1", "[execution]")
@@ -305,84 +308,6 @@ TEST_CASE("memory test", "[memory]")
     });
     REQUIRE(!env.run());
 }
-
-class linked_list {
-    struct node {
-        int value{ -1 };
-        var_ptr<node> next{ nullptr };
-    };
-
-    node head_;
-
-public:
-    void insert(int value)
-    {
-        node* cur = &head_;
-        node* next = cur->next.load();
-        while (next != nullptr && value < next->value) {
-            cur = next;
-            next = cur->next.load();
-        }
-
-        node* new_node = alloc<node>();
-        new_node->value = value;
-        do {
-            next = cur->next.load();
-            new_node->next.store(next);
-        } while (!cur->next.atomic_cas(next, new_node));
-    }
-
-    bool remove(int target)
-    {
-        node* cur = nullptr;
-        node* next = nullptr;
-        do {
-            cur = &head_;
-            next = cur->next.load();
-            while (true) {
-                if (next == nullptr || next->value < target) {
-                    return false;
-                }
-                if (next->value == target) {
-                    break;
-                }
-                cur = next;
-                next = cur->next.load();
-            }
-        } while (!cur->next.atomic_cas(next, next->next.load()));
-
-        free(next);
-        return true;
-    }
-
-    bool find(int target)
-    {
-        node* cur = &head_;
-        node* next = cur->next.load();
-        while (true) {
-            if (next == nullptr || next->value < target) {
-                return false;
-            }
-            if (next->value == target) {
-                return true;
-            }
-            cur = next;
-            next = cur->next.load();
-        }
-        return false;
-    }
-
-    void check_invariant()
-    {
-        node* cur = &head_;
-        while (cur->next.raw_load() != nullptr) {
-            if (cur->value > cur->next.raw_load()->value) {
-                throw_exception("invariant broken");
-            }
-            cur = cur->next.raw_load();
-        }
-    }
-};
 
 TEST_CASE("linked_list test0", "[linked_list]")
 {

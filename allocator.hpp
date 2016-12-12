@@ -14,7 +14,7 @@ public:
     allocator()
     {
         get_exit_hooks().push_back([this] {
-            return finalize();
+            finalize();
         });
     }
 
@@ -28,9 +28,7 @@ public:
         auto* mem = reserved_.back();
         reserved_.pop_back();
         in_use_.insert(mem);
-        if (EnableLogging) {
-            fmt::print("[{}] alloc()-> {}\n", environment::get().get_thread_id(), (intptr_t)mem);
-        }
+        environment::log("[{}] alloc()-> {}\n", environment::get().get_thread_id(), (intptr_t)mem);
         return mem;
     }
     
@@ -39,12 +37,10 @@ public:
         if (mem == nullptr) {
             return;
         }
-        if (EnableLogging) {
-            fmt::print("[{}] free({})\n", environment::get().get_thread_id(), (intptr_t)mem);
-        }
+        environment::log("[{}] free({})\n", environment::get().get_thread_id(), (intptr_t)mem);
         auto it = in_use_.find(mem);
         if (it == in_use_.end()) {
-            throw_exception("double free");
+            throw_exception(fmt::format("[{}] double free({})", environment::get().get_thread_id(), (intptr_t)mem));
         }
         in_use_.erase(it);
         reserved_.push_back(mem);
@@ -54,7 +50,7 @@ public:
         return in_use_.find(mem) != in_use_.end();
     }
 
-    bool finalize()
+    void finalize()
     {
         auto _ = finally([this] {
             all_.clear();
@@ -63,10 +59,8 @@ public:
         });
 
         if (!in_use_.empty()) {
-            return false;
-            //throw_exception("memory leak");
+            throw_exception(fmt::format("memory leak"));
         }
-        return true;
     }
 
     std::vector<std::unique_ptr<T> > all_;

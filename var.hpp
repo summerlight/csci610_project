@@ -28,18 +28,13 @@ public:
     {
         auto& th = environment::get().this_thread();
         if (!clock_.happens_before(th.current_)) {
-            if (EnableLogging) {
-                fmt::print("[{}] data race({})({}, {})\n", th.index_, (intptr_t)this, th.current_, clock_);
-            }
-            throw_exception("data race");
+            throw_exception(fmt::format("[{}] data race({})({}, {})\n", th.index_, (intptr_t)this, th.current_, clock_));
         }
     }
 
     void log(const char* func)
     {
-        if (EnableLogging) {
-            fmt::print("[{}] var({})::{}({})\n", environment::get().get_thread_id(), (intptr_t)this, func, clock_);
-        }
+        environment::log("[{}] var({})::{}({})\n", environment::get().get_thread_id(), (intptr_t)this, func, clock_);
     }
 
     void store(const T& v)
@@ -146,10 +141,7 @@ public:
     void check_freed_memory() {
         auto* ptr = super::raw_load();
         if (ptr && !is_alive(ptr)) {
-            if (EnableLogging) {
-                fmt::print("[{}] access to freed memory({}) {}\n", environment::get().get_thread_id(), (intptr_t)this, (intptr_t)super::raw_load());
-            }
-            throw_exception("access to freed memory");
+            throw_exception(fmt::format("[{}] access to freed memory({}) {}\n", environment::get().get_thread_id(), (intptr_t)this, (intptr_t)super::raw_load()));
         }
     }
 };

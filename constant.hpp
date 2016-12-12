@@ -5,8 +5,8 @@
 // The only reason for this is to reduce cache miss as they're so frequently accessed... 
 constexpr size_t MaxBlockCnt = 256;
 constexpr size_t MaxPathBucket = 1024;
-constexpr size_t MaxFuncCnt = 32;
+constexpr size_t MaxFuncCnt = 8;
 constexpr size_t MaxThreadCnt = 4;
-constexpr bool EnableLogging = true;
+constexpr bool EnableLogging = false;
 
 #endif // __CONSTANT_HPP__

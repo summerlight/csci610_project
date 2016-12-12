@@ -1,27 +1,41 @@
 #include "environment.hpp"
 
+#include <utility>
 #include <exception>
 #include "finally.hpp"
 #include "scheduler.hpp"
 
 std::unique_ptr<environment> singleton_;
 
-std::vector<std::function<bool()> >& get_exit_hooks()
+void thread_context::set_id(size_t id)
 {
-    static std::vector<std::function<bool()> > hooks;
+    index_ = id;
+    for (size_t i = 0; i < MaxFuncCnt; i++) {
+        coverage_[i].thread_id = id;
+        coverage_[i].func_no = i;
+        coverage_[i].reset();
+    }
+}
+
+std::vector<std::function<void()> >& get_exit_hooks()
+{
+    static std::vector<std::function<void()> > hooks;
     return hooks;
 }
 
-void throw_exception(const char* ex)
+void throw_exception(const std::string& str)
 {
-    throw std::runtime_error(ex);
+    environment::log("Exception: {}\n", str);
+    environment::get().error_ = str;
+    //throw std::runtime_error(str);
 }
 
 environment::environment()
 {
     for (size_t i = 0; i < MaxThreadCnt; i++) {
-        threads_[i].index_ = i;
+        threads_[i].set_id(i);
     }
+
     scheduler_.reset(new random_scheduler);
 }
 /*
@@ -61,9 +75,7 @@ vector_clock<MaxThreadCnt> environment::fence_seq_cst()
         th.current_ = new_clock;
         th.current_.increment(th.index_);
     }
-    if (EnableLogging) {
-        fmt::print("fence_seq_cst {}\n", new_clock);
-    }
+    environment::log("fence_seq_cst {}\n", new_clock);
     return new_clock;
 }
 
@@ -81,20 +93,17 @@ void environment::register_thread(size_t idx, std::function<void()> fn)
             fn();
         }
         catch (std::runtime_error& e) {
-            if (EnableLogging) {
-                fmt::print("exception : {}\n", e.what());
-            }
+            environment::log("unhandled exception : {}\n", e.what());
             error_ = e.what();
         }
         return switch_();
     };
 }
 
-bool environment::run()
+void environment::run_impl()
 {
-    bool ret = false;
     auto _ = finally([&] {
-        ret = finalize();
+        finalize();
     });
 
     for (int i = 0; i < MaxThreadCnt; i++) {
@@ -105,29 +114,44 @@ bool environment::run()
     }
 
     current_idx_ = scheduler_->next();
-    while (current_idx_ != -1) {
+    while (current_idx_ != -1 && !is_finished()) {
         auto& picked = context_[current_idx_];
         if (picked) {
             picked = picked();
-            if (!error_.empty()) {
-                return true;
-            }
+            history_.emplace_back(current_idx_, current_coverage());
             scheduler_->ready(current_idx_);
         }
         current_idx_ = scheduler_->next();
     }
-
-    return ret;
 }
 
-bool environment::finalize()
+bool environment::is_finished()
+{
+    return std::none_of(std::begin(context_), std::end(context_), [](auto& ctx) { return bool(ctx); });
+}
+
+bool environment::run()
+{
+    run_impl();
+    return !error_.empty();
+}
+
+void environment::finalize()
 {
     for (auto&& fn : get_exit_hooks()) {
-        if (!fn()) {
-            return true;
+        fn();
+    }
+}
+
+size_t environment::current_coverage()
+{
+    size_t path_cov = 0;
+    for (int i = 0; i < MaxThreadCnt; i++) {
+        for (int j = 0; j < MaxFuncCnt; j++) {
+            path_cov += threads_[i].coverage_[j].path_.count();
         }
     }
-    return false;
+    return path_cov;
 }
 
 int environment::get_thread_id()
