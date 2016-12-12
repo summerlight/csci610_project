@@ -48,9 +48,7 @@ add_custom_command(
 #######################
 
 add_executable(csci610
-    csci610.cpp
-    test_stack.cpp
-    test_list.cpp)
+    csci610.cpp)
 
 add_dependencies(csci610 csci610_base)
 
